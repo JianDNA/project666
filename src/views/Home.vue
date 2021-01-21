@@ -146,6 +146,7 @@ export default {
   data () {
     return {
       debounceSetFit: null,
+      debounceGetData: null,
       drawer: false,
       noiseSwitch: true,
       infoWindow: null,
@@ -202,10 +203,28 @@ export default {
       this.map.setFitView(this.fixedDevice.map(item => {
         return item.Mark
       }))
+    },
+    getMoreData () {
+      console.log('获取更多')
+      const query = {
+        time: this.eventList[this.eventList.length - 1].TIME,
+        limit: 40 // 获取20条即可
+      }
+      getTodayVoice(query)
+        .then((res) => {
+          this.eventList.push(...res.data)
+          this.$refs.scrollView.synchronizeRefresh((myScroll) => {
+            console.log('加载成功2', myScroll.maxScrollY)
+          })
+        })
+        .catch((err) => {
+          console.log(err)
+        })
     }
   },
   created () {
     this.debounceSetFit = debounce(this.setFit)
+    this.debounceGetData = debounce(this.getMoreData, 200)
     this.fixedDeviceMap = new Map()
     AMapLoader.load(mapConfig)
       .then((AMap) => {
@@ -429,6 +448,11 @@ export default {
   },
   mounted () {
     window.addEventListener('resize', this.debounceSetFit)
+    this.$refs.scrollView.scrolling((y, myScroll) => {
+      if (y <= myScroll.maxScrollY) {
+        this.debounceGetData()
+      }
+    })
   },
   beforeDestroy () {
     window.removeEventListener('resize', this.debounceSetFit)
