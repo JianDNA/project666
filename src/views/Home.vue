@@ -6,7 +6,7 @@
           <img src="../assets/images/logo.jpg" alt="">
           <img src="../assets/images/logo2.jpg" alt="">
           <span class="title">噪音实时监控平台</span>
-          <span class="today">今日事件数： <span class="count">31828</span></span>
+          <span class="today">今日事件数： <span class="count">{{eventNum}}</span></span>
           <el-button type="primary" @click="query">数据查询</el-button>
         </div>
         <div class="right">
@@ -166,7 +166,9 @@ export default {
       events: ['全部', '玻璃破碎声', '尖叫声', '汽车鸣笛声', '爆炸声', '背景噪声', '鞭炮声', '其他'],
       eventList: [],
       fixedDeviceMap: {},
-      fixedDevice: []
+      fixedDevice: [],
+      updateListFlag: false,
+      eventNum: 0
     }
   },
   filters: {
@@ -217,6 +219,11 @@ export default {
         this.infoWindow = new AMap.InfoWindow({
           offset: new AMap.Pixel(0, -30)
         })
+        // 获取事件数量
+        return getTodayCount()
+      })
+      .then((data) => {
+        this.eventNum = data.data
         return getFixedDevice()
       })
       // 获取固定设备,并为所有固定设备添加mark
@@ -251,10 +258,10 @@ export default {
                   item.Mark.imei = item.IMEI
                   item.Mark.on('click', this.markerClick)
                   if (i === this.fixedDevice.length - 1) {
-                    resolve(666)
                     this.map.setFitView(this.fixedDevice.map(item => {
                       return item.Mark
                     }))
+                    resolve(666)
                   }
                 }
               }
@@ -267,7 +274,7 @@ export default {
         const query = {
           imei: this.imei,
           time: Date.now(),
-          limit: 20 // 获取20条即可
+          limit: 40 // 获取40条即可
         }
         return getTodayVoice(query)
       })
@@ -275,6 +282,149 @@ export default {
       .then((res) => {
         console.log(res)
         this.eventList.push(...res.data)
+        // 添加定时器
+        // 如果现在的列表为空, 就加载20条
+        // 如果列表不为空, 获取到当前列表中最新的数据也就是arr[0]的时间t
+        // 从数据库中获取到时间大于等于t的所有数据, 添加到列表最前面
+        this.updateVoiceTimer = setInterval(() => {
+          if (this.updateListFlag) return
+          if (this.eventList.length === 0) {
+            // 原有列表中没有数据,新加载20条
+            // 做类似于下拉加载的操作
+            const query = {
+              imei: this.imei,
+              time: Date.now(),
+              limit: 20 // 获取20条即可
+            }
+            getTodayVoice(query).then((res) => {
+              // 清空员数组
+              this.eventList.splice(0, this.list.length)
+              this.eventList.push(...res.data)
+              this.$refs.scrollView.refresh()
+            })
+          } else {
+            // 原有列表中已有数据, 加载最新的
+            this.updateListFlag = true
+            const time = this.eventList[0].TIME
+            getTodayCount()
+              .then((data) => {
+                if (this.eventNum !== data.data) {
+                  return data.data
+                }
+              })
+              .then((num) => {
+                if (num) {
+                  this.eventNum = num
+                  return getNewVoice(time, this.imei)
+                }
+              })
+              .then((res) => {
+                if (res) {
+                  res.data.forEach((item) => {
+                    // 为新事件添加对应的mark动画
+                    this.fixedDeviceMap
+                      .get(item.IMEI)
+                      .mark.setAnimation('AMAP_ANIMATION_BOUNCE')
+                    if (
+                      this.fixedDeviceMap.get(item.IMEI).mark.timer !==
+                      undefined &&
+                      this.fixedDeviceMap.get(item.IMEI).mark.timer !== null
+                    ) {
+                      clearTimeout(
+                        this.fixedDeviceMap.get(item.IMEI).mark.timer
+                      )
+                    }
+                    this.fixedDeviceMap.get(
+                      item.IMEI
+                    ).mark.timer = setTimeout(() => {
+                      this.fixedDeviceMap
+                        .get(item.IMEI)
+                        .mark.setAnimation('AMAP_ANIMATION_NONE')
+                    }, 3000)
+                  })
+                  if (res.data.length > 0) {
+                    this.eventList.unshift(...res.data)
+                    this.$refs.scrollView.refresh()
+                    // 判断新的数据中,有没有出现声音变化超过了20, 超过了, 接下来才需要更新热力图
+                    /* let flag = false
+                    for (let i = 0; i < res.data.length; i++) {
+                      const abs = Math.abs(
+                        this.fixedDeviceMap.get(res.data[i].IMEI).decibel -
+                        res.data[i].DECIBEL
+                      )
+                      if (!flag && abs >= 20) flag = true
+                      this.fixedDeviceMap.get(res.data[i].IMEI).decibel =
+                        res.data[i].DECIBEL
+                    }
+                    if (flag) {
+                      // 有数据就更新热力图
+                      const arr = [this.imei]
+                      this.fixedDevice.forEach((item) => {
+                        arr.push(item.IMEI)
+                      })
+                      getHeatmapData(arr)
+                        .then((res) => {
+                          // 更新热力图
+                          // 生成符合高德地图热力图api要求的数据  --> [{lng: 116.405285, lat: 39.904989, count: 65},{}, …]
+                          this.heartData = []
+                          console.log(res)
+                          Object.keys(res.data).forEach((key) => {
+                            const obj = {}
+                            const device = this.fixedDeviceMap.get(key)
+                            if (
+                              device === undefined &&
+                              this.mobileDevice.IMEI === key
+                            ) {
+                              // 移动端
+                              obj.lng = this.mobileDevice.LanLat[0]
+                              obj.lat = this.mobileDevice.LanLat[1]
+                              obj.count =
+                                res.data[key] === null
+                                  ? 0
+                                  : res.data[key].DECIBEL * 1
+                              this.mobileDevice.heartData = obj
+                              // this.heartData.push(obj)
+                            } else {
+                              obj.lng = device.LanLat[0]
+                              obj.lat = device.LanLat[1]
+                              obj.count =
+                                res.data[key] === null
+                                  ? 0
+                                  : res.data[key].DECIBEL * 1
+                              obj.idx = this.fixedDeviceMap.get(key).idx
+                              this.heartData.push(obj)
+                            }
+                          })
+                          this.heartData = this.heartData.sort((a, b) => {
+                            return a.idx - b.idx
+                          })
+                          const arr2 = this.classifyArr(this.heartData)
+                          // console.log(this.heartData)
+                          let arr = []
+                          arr2.forEach(group => {
+                            group.reduce((prev, curr) => {
+                              arr = arr.concat(this.computePoint(prev, curr))
+                              return curr
+                            })
+                          })
+                          arr = arr.concat(this.heartData)
+                          this.heatmap.setDataSet({
+                            data: arr
+                          })
+                        })
+                        .catch((err) => {
+                          console.log(err)
+                        })
+                    } */
+                  }
+                }
+                this.updateListFlag = false
+              })
+              .catch((err) => {
+                console.log(err)
+              })
+          }
+        }, 2700)
       })
   },
   mounted () {
