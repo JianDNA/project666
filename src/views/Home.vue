@@ -26,7 +26,21 @@
               <el-col :span="8">事件</el-col>
               <el-col :span="8">时间</el-col>
             </el-row>
-            <div class="box"></div>
+            <div class="box">
+              <div class="container">
+                <ScrollView ref="scrollView">
+                  <div class="content-list">
+                    <el-row v-for="item in eventList" :key="item.ID">
+                      <el-col :span="8">{{
+                          item | formatAddrest(fixedDeviceMap)
+                        }}</el-col>
+                      <el-col :span="8">{{ item[getClassTable][0].CLASS }}</el-col>
+                      <el-col :span="8">{{ item.TIME | formatTime }}</el-col>
+                    </el-row>
+                  </div>
+                </ScrollView>
+              </div>
+            </div>
           </div>
         </el-aside>
         <el-container>
@@ -120,12 +134,18 @@
 <script>
 import AMapLoader from '@amap/amap-jsapi-loader'
 import mapConfig from '../config/MapConfig'
+import ScrollView from '../components/ScrollView'
+// eslint-disable-next-line no-unused-vars
+import { getFixedDevice, getHeatmapData, getNewVoice, getTodayCount, getTodayVoice } from '../../../noisemap/src/api'
+import { formatTime, getTodayClassTable, debounce } from '../util/tool'
 export default {
   name: 'Home',
   components: {
+    ScrollView
   },
   data () {
     return {
+      debounceSetFit: null,
       drawer: false,
       noiseSwitch: true,
       infoWindow: null,
@@ -143,15 +163,48 @@ export default {
       Address: [],
       queryAddress: '',
       queryEvent: '',
-      events: ['全部', '玻璃破碎声', '尖叫声', '汽车鸣笛声', '爆炸声', '背景噪声', '鞭炮声', '其他']
+      events: ['全部', '玻璃破碎声', '尖叫声', '汽车鸣笛声', '爆炸声', '背景噪声', '鞭炮声', '其他'],
+      eventList: [],
+      fixedDeviceMap: {},
+      fixedDevice: []
+    }
+  },
+  filters: {
+    formatAddrest: function (value, map) {
+      if (value.DEVICE_TYPE === 'fixed') return map.get(value.IMEI).address
+      return '移动设备地点'
+    },
+    formatTime: (value) => {
+      return formatTime(value, 'MM-DD  hh:mm')
+    },
+    formatEvent: (value, table) => {
+      console.log(value)
+      console.log(table)
+      let res = value[table]
+      res = res[0].CLASS
+      res = value === 'Other' ? '其他' : value
+      console.log(res)
+      return res
+    }
+  },
+  computed: {
+    getClassTable: function () {
+      return getTodayClassTable()
     }
   },
   methods: {
     query () {
       this.drawer = true
+    },
+    setFit () {
+      this.map.setFitView(this.fixedDevice.map(item => {
+        return item.Mark
+      }))
     }
   },
   created () {
+    this.debounceSetFit = debounce(this.setFit)
+    this.fixedDeviceMap = new Map()
     AMapLoader.load(mapConfig)
       .then((AMap) => {
         this.AMap = AMap
@@ -164,7 +217,71 @@ export default {
         this.infoWindow = new AMap.InfoWindow({
           offset: new AMap.Pixel(0, -30)
         })
+        return getFixedDevice()
       })
+      // 获取固定设备,并为所有固定设备添加mark
+      .then((device) => {
+        return new Promise((resolve, reject) => {
+          this.fixedDevice.push(...device.data)
+          // 创建点标记
+          for (let i = 0; i < this.fixedDevice.length; i++) {
+            const item = this.fixedDevice[i]
+            item._gps = item.GPS.split('$')
+            this.AMap.convertFrom(
+              [...item._gps],
+              'gps',
+              (status, result) => {
+                if (result.info === 'ok') {
+                  const res = result.locations // Array.<LngLat>
+                  item.LanLat = [res[0].lng, res[0].lat]
+                  item.Mark = new this.AMap.Marker({
+                    position: new this.AMap.LngLat(...item.LanLat),
+                    title: 66
+                    // offset: new this.AMap.Pixel(-10, -10)
+                  })
+                  this.fixedDeviceMap.set(item.IMEI, {
+                    address: item.NAME,
+                    mark: item.Mark,
+                    LanLat: [res[0].lng, res[0].lat],
+                    idx: item.CATEGORY,
+                    decibel: 0
+                  })
+                  this.map.add(item.Mark)
+                  item.Mark.content = '当日暂无噪音事件被检测到'
+                  item.Mark.imei = item.IMEI
+                  item.Mark.on('click', this.markerClick)
+                  if (i === this.fixedDevice.length - 1) {
+                    resolve(666)
+                    this.map.setFitView(this.fixedDevice.map(item => {
+                      return item.Mark
+                    }))
+                  }
+                }
+              }
+            )
+          }
+        })
+      })
+      .then(() => {
+        // 获取最新的数据
+        const query = {
+          imei: this.imei,
+          time: Date.now(),
+          limit: 20 // 获取20条即可
+        }
+        return getTodayVoice(query)
+      })
+      // 获取今天的噪音事件
+      .then((res) => {
+        console.log(res)
+        this.eventList.push(...res.data)
+      })
+  },
+  mounted () {
+    window.addEventListener('resize', this.debounceSetFit)
+  },
+  beforeDestroy () {
+    window.removeEventListener('resize', this.debounceSetFit)
   }
 }
 </script>
@@ -280,7 +397,17 @@ $color: #03FBF9;
           }
           .box{
             flex: 1;
-            background: #ccc;
+            //background: #ccc;
+            overflow: hidden;
+            position: relative;
+            .container{
+              position: absolute;
+              top: 0;
+              bottom: 0;
+              left: 0;
+              right: 0;
+              overflow: hidden;
+            }
           }
         }
       }

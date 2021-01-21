@@ -1,12 +1,5 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
-// 实现Vue组件的按需加载
-const Home = (resolve) => {
-  import('../views/Home').then((module) => {
-    resolve(module)
-  })
-}
-
 Vue.use(VueRouter)
 
 const routes = [
@@ -14,7 +7,7 @@ const routes = [
   {
     path: '/home',
     name: 'Home',
-    component: Home,
+    component: () => import('../views/Home.vue'),
     meta: {
       keepAlive: true // 需要被缓存
     }
