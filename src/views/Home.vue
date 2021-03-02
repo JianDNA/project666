@@ -10,9 +10,10 @@
           <el-button type="primary" @click="query">数据查询</el-button>
         </div>
         <div class="right">
-          <span>噪音开关</span>
+          <span>热力图开关</span>
           <el-switch
             v-model="noiseSwitch"
+            @change="heartChange"
             inactive-color="#000">>
           </el-switch>
         </div>
@@ -45,9 +46,8 @@
         </el-aside>
         <el-container>
           <el-main id="map"></el-main>
-          <el-footer height="190px">
-            <div class="top">区域噪声统计</div>
-            <div class="bottom"></div>
+          <el-footer height="210px">
+            <Chart/>
           </el-footer>
         </el-container>
       </el-container>
@@ -152,13 +152,15 @@ import { Message } from 'element-ui'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import mapConfig from '../config/MapConfig'
 import ScrollView from '../components/ScrollView'
+import Chart from '@/components/Chart'
 // eslint-disable-next-line no-unused-vars
 import { getFixedDevice, getHeatmapData, getNewVoice, getTodayCount, getTodayVoice, getVoice, getAllMobile } from '@/api'
 import { formatTime, getTodayClassTable, debounce } from '../util/tool'
 export default {
   name: 'Home',
   components: {
-    ScrollView
+    ScrollView,
+    Chart
   },
   data () {
     return {
@@ -194,6 +196,7 @@ export default {
       updateListFlag: false,
       eventNum: 0,
       heartData: [],
+      heatmap: null,
       heatmapGradient: {
         0.55: '#006400',
         0.7: '#0000FF',
@@ -205,7 +208,8 @@ export default {
       list: [],
       mobileHeartData: [],
       fixDeviceHeartData: [],
-      mobileChange: []
+      mobileChange: [],
+      chart: null
     }
   },
   filters: {
@@ -243,6 +247,13 @@ export default {
     }
   },
   methods: {
+    heartChange (val) {
+      if (val) {
+        this.heatmap && this.heatmap.show()
+      } else {
+        this.heatmap && this.heatmap.hide()
+      }
+    },
     querySelect () {
       // const query = {
       //   startTime: new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 0, 0),
@@ -718,7 +729,7 @@ export default {
               })
               .then((res) => {
                 this.mobileHeartFlag = false
-                console.log(res.data)
+                // console.log(res.data)
                 const arr = []
                 this.mobileChange = []
                 for (let i = 0; i < res.data.length; i++) {
@@ -1009,24 +1020,6 @@ $color: #03FBF9;
           margin-top: 10px;
           border: 1px solid  #032B45;
           padding: 0;
-          display: flex;
-          flex-direction: column;
-          .top{
-            background: #08304A;
-            height: 35px;
-            line-height: 35px;
-            color: $color;
-            font-size: 18px;
-            font-weight: bold;
-            text-align: center;
-            box-sizing: border-box;
-            border-top-left-radius: 5px;
-            border-top-right-radius: 5px;
-          }
-          .bottom{
-            flex: 1;
-            background: #7f7f7f;
-          }
         }
       }
     }

@@ -19,3 +19,5 @@ export const getNewVoiceByImei = (imei) => Network.get('getNewVoiceByImei', { im
 export const getHeatmapData = (imei) => Network.post('getHeatmapData', { imei: imei })
 
 export const getAllMobile = () => Network.get('allMobile')
+
+export const getTableData = (tableTime) => Network.get('tableData', { tableTime })
