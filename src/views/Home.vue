@@ -46,8 +46,9 @@
         </el-aside>
         <el-container>
           <el-main id="map"></el-main>
-          <el-footer height="210px">
-            <Chart/>
+          <i :class="chartHeight === '230px' ? 'el-icon-caret-bottom' : 'el-icon-caret-top'" @click="changeHeight"></i>
+          <el-footer :height="chartHeight">
+            <Chart :mobileDevice="mobileDevice" :fixedDevice="fixedDevice"/>
           </el-footer>
         </el-container>
       </el-container>
@@ -156,6 +157,7 @@ import Chart from '@/components/Chart'
 // eslint-disable-next-line no-unused-vars
 import { getFixedDevice, getHeatmapData, getNewVoice, getTodayCount, getTodayVoice, getVoice, getAllMobile } from '@/api'
 import { formatTime, getTodayClassTable, debounce } from '../util/tool'
+import { getNewVoiceByImei } from '../../../noisemap/src/api'
 export default {
   name: 'Home',
   components: {
@@ -164,8 +166,10 @@ export default {
   },
   data () {
     return {
+      chartHeight: '230px',
       redIcon: null,
       mobileMap: null,
+      mobileDevice: [],
       addressMap: null,
       debounceSetFit: null,
       debounceGetData: null,
@@ -247,6 +251,61 @@ export default {
     }
   },
   methods: {
+    markerClick (e) {
+      // '当日暂无噪音事件被检测到'
+      console.log(6678887, e.target)
+      const imei = e.target.imei
+      console.log(imei)
+      getNewVoiceByImei(imei)
+        .then((res) => {
+          console.log(res)
+          if (res.data) {
+            // 有数据
+            const event = res.data
+            console.log(event, '**********')
+            const time = formatTime(event.TIME * 1)
+            let address
+            if (this.fixedDeviceMap.get(event.DEVICE)) {
+              address = this.fixedDeviceMap.get(event.DEVICE).address
+            } else {
+              address = '移动设备地点'
+            }
+            const type = event.CLASS
+            const decibel = (event.decibel * 1).toFixed(3)
+            console.log(time, address, type)
+            const content = []
+            const oAddress = `<div style="padding:0px" 0px="" 4px;\\\\"=""><b>${address}</b>`
+            const otime = `时间 : ${time}`
+            const oEvent = `发现: ${type} ---- ${decibel} db</div>`
+            content.push(oAddress)
+            content.push(otime)
+            content.push(oEvent)
+            this.infoWindow.setContent(content.join('<br>'))
+            this.infoWindow.open(this.map, e.target.getPosition())
+          } else {
+            // 无数据
+            let address
+            if (this.fixedDeviceMap.get(imei)) {
+              address = this.fixedDeviceMap.get(imei).address
+            } else {
+              address = '移动设备地点'
+            }
+            const content = []
+            const oAddress = `<div style="padding:0px" 0px="" 4px;\\\\"=""><b>${address}</b>`
+            const oEvent = '当日暂无噪音事件被检测到</div>'
+            content.push(oAddress)
+            content.push(oEvent)
+            this.infoWindow.setContent(content.join('<br>'))
+            this.infoWindow.open(this.map, e.target.getPosition())
+          }
+        })
+        .catch((err) => {
+          console.log(err)
+        })
+    },
+    changeHeight () {
+      this.chartHeight = this.chartHeight === '230px' ? '0px' : '230px'
+    },
     heartChange (val) {
       if (val) {
         this.heatmap && this.heatmap.show()
@@ -469,10 +528,10 @@ export default {
     getMoreData () {
       console.log('获取更多')
       const query = {
-        time: this.eventList[this.eventList.length - 1].TIME,
+        time: this.eventList[this.eventList.length - 1] ? this.eventList[this.eventList.length - 1].TIME : undefined,
         limit: 40 // 获取20条即可
       }
-      getTodayVoice(query)
+      query.time && getTodayVoice(query)
         .then((res) => {
           this.eventList.push(...res.data)
           this.$refs.scrollView.synchronizeRefresh((myScroll) => {
@@ -792,6 +851,7 @@ export default {
             count: item.DECIBEL * 1,
             id: item.id
           })
+          this.mobileDevice.push({ id: item.id, type: 'mobile', name: '移动设备:' + item.IMEI })
         })
         // 将所有的移动端的经纬度进行转化
         const arr = []
@@ -818,6 +878,9 @@ export default {
             icon: this.redIcon
             // anchor: 'bottom-center'
           })
+          obj.Mark.content = '当日暂无噪音事件被检测到'
+          obj.Mark.imei = keys[idx]
+          obj.Mark.on('click', this.markerClick)
           this.map.add(obj.Mark)
         })
         const arr = []
@@ -1012,14 +1075,27 @@ $color: #03FBF9;
         flex: 1;
         display: flex;
         flex-direction: column;
+        >i{
+          display: inline-block;
+          font-size: 30px;
+          color: white;
+          text-align: right;
+          cursor: pointer;
+          //position: absolute;
+          //top: -30px;
+          //right: 0;
+        }
         >.el-main{
           flex: 1;
           padding: 0;
         }
         >.el-footer{
-          margin-top: 10px;
+          //margin-top: 30px;
+          transition: all 100ms linear;
           border: 1px solid  #032B45;
           padding: 0;
+          position: relative;
+          overflow: hidden;
         }
       }
     }

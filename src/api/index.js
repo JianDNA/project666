@@ -20,4 +20,4 @@ export const getHeatmapData = (imei) => Network.post('getHeatmapData', { imei: i
 
 export const getAllMobile = () => Network.get('allMobile')
 
-export const getTableData = (tableTime) => Network.get('tableData', { tableTime })
+export const getTableData = (query) => Network.get('tableData', query)

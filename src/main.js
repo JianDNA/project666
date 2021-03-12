@@ -8,6 +8,8 @@ const echarts = require('echarts/lib/echarts')
 require('echarts/lib/component/grid')
 require('echarts/lib/chart/bar')
 require('echarts/lib/component/tooltip')
+require('echarts/lib/component/grid')
+require('echarts/lib/chart/line')
 Vue.prototype.$echarts = echarts
 
 Vue.config.productionTip = false
